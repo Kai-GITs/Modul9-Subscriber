@@ -5,6 +5,7 @@ use lapin::{
     types::FieldTable,
     Connection, ConnectionProperties,
 };
+use std::thread;
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize)]
 pub struct UserCreatedEventMessage {
@@ -39,6 +40,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     while let Some(delivery) = consumer.next().await {
         let delivery = delivery?;
         let message = UserCreatedEventMessage::try_from_slice(&delivery.data)?;
+
+        let ten_millis = std::time::Duration::from_millis(1000);
+        thread::sleep(ten_millis);
 
         println!(
             "In Kalfin's Computer [2406360256]. Message received: {:?}",
