@@ -1,40 +1,52 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use crosstown_bus::{CrosstownBus, HandleError, MessageHandler};
-use std::{thread, time};
+use futures::stream::StreamExt;
+use lapin::{
+    options::{BasicAckOptions, BasicConsumeOptions, QueueDeclareOptions},
+    types::FieldTable,
+    Connection, ConnectionProperties,
+};
 
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize)]
 pub struct UserCreatedEventMessage {
     pub user_id: String,
     pub user_name: String,
 }
-pub struct UserCreatedHandler;
-impl MessageHandler<UserCreatedEventMessage> for UserCreatedHandler {
-    fn handle(&self, message: Box<UserCreatedEventMessage>) -> Result<(), HandleError> {
-        let ten_millis = time::Duration::from_millis(1000);
-        let now = time::Instant::now();
-        // thread::sleep(ten_millis);
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let connection =
+        Connection::connect("amqp://guest:guest@localhost:5672", ConnectionProperties::default())
+            .await?;
+    let channel = connection.create_channel().await?;
+
+    channel
+        .queue_declare(
+            "user_created".into(),
+            QueueDeclareOptions::default(),
+            FieldTable::default(),
+        )
+        .await?;
+
+    let mut consumer = channel
+        .basic_consume(
+            "user_created".into(),
+            "subscriber".into(),
+            BasicConsumeOptions::default(),
+            FieldTable::default(),
+        )
+        .await?;
+
+    while let Some(delivery) = consumer.next().await {
+        let delivery = delivery?;
+        let message = UserCreatedEventMessage::try_from_slice(&delivery.data)?;
+
         println!(
-            "In Kalfin’s Computer [2406360256]. Message received: {:?}",
+            "In Kalfin's Computer [2406360256]. Message received: {:?}",
             message
         );
-        Ok(())
+
+        delivery.ack(BasicAckOptions::default()).await?;
     }
 
-    fn get_handler_action(&self) -> String {
-        return "".to_string();
-    }
+    Ok(())
 }
-fn main() {
-    let listener =
-        CrosstownBus::new_queue_listener("amqp://guest:guest@localhost:5672".to_owned()).unwrap();
-    _ = listener.listen(
-        "user_created".to_owned(),
-        UserCreatedHandler {},
-        crosstown_bus::QueueProperties {
-            auto_delete: false,
-            durable: false,
-            use_dead_letter: true,
-        },
-    );
-    loop {}
-    }
